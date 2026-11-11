@@ -1,0 +1,2231 @@
+{
+  "name": "חילוץ חשבוניות",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        240,
+        -48
+      ],
+      "id": "eaeaa080-f358-45cd-bd9b-da3dd25db0a9",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "simple": false,
+        "filters": {
+          "readStatus": "unread"
+        },
+        "options": {
+          "dataPropertyAttachmentsPrefixName": "attachment_",
+          "downloadAttachments": true
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        464,
+        0
+      ],
+      "id": "effa673f-579d-4cbc-bda6-375f5575be9f",
+      "name": "Get Unread Emails",
+      "webhookId": "554759e6-d58f-43c6-88a8-9e50c5dd1436",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ 'מקור: ' + $json.source + '\\nשם קובץ: ' + $json.fileName + '\\nסוג קובץ: ' + $json.mimeType + '\\nשולח: ' + $json.sender + '\\nנושא: ' + $json.subject + '\\nתאריך קבלה: ' + $json.receivedDate + '\\nהקשר טקסטואלי:\\n' + ($json.textContext || '') + '\\n\\nתוכן המסמך שחולץ:\\n' + ($json.extractedText || '') }}",
+        "options": {
+          "systemMessage": "={{ 'היום בתאריך: ' + $now.setZone('Asia/Jerusalem').toFormat('yyyy-MM-dd') + '\\n\\nאתה מנתח חשבוניות מדויק להנהלת חשבונות. תפקידך לנתח את המסמך המצורף (PDF או תמונה) ולהחזיר פלט JSON מובנה בלבד (בלי לגשת בעצמך ל-Airtable).\\n\\n### כללי סינון קפדניים:\\n1. אשר כתקין (`is_valid_invoice: true`) **אך ורק** מסמך שהינו **קבלה**, **חשבונית מס**, או **חשבונית מס קבלה**.\\n2. אם המסמך הוא **זיכוי / חשבונית זיכוי**, **הצעת מחיר**, **הזמנה / הזמנת רכש**, תעודת משלוח, חוזה, לוגו, פרסומת או מסמך שאינו קבלה/חשבונית מס — הגדר `is_valid_invoice: false` והחזר JSON מיד.\\n\\n### כללי חילוץ השדות בעברית (חובה להקפיד על כל הגדרה!):\\n1. **`title_he` (עמודת \"כותרת\")**: הנושא הכללי שבעבורו נרכש השירות המוצג בחשבונית, בעברית בלבד (לדוגמה: \"שירותי ניקיון\", \"אספקת ציוד משרדי\", \"תחזוקת מחשוב ותוכנה\", \"תיקוני חשמל ואינסטלציה\").\\n2. **`client_or_vendor_name` (עמודת \"שם לקוח\")**: שם החברה המופיעה בחשבונית (לעיתים קרובות מופיע בראש המסמך ליד הלוגו של החברה). אם החשבונית בשפה זרה, השאר שם חברה ברור.\\n3. **`description_he` (עמודת \"תיאור\")**: תיאור קצר של **הצורך** של קניית השירותים השונים — **עד 5 מילים בלבד!** (לדוגמה: \"תחזוקה וניקיון שוטף למשרד\", מקסימום 5 מילים).\\n4. **`company_id_hp` (עמודת \"ח.פ לקוח\")**: מספר ח.פ / עוסק מורשה / Tax ID המופיע בחשבונית (אם לא מופיע, החזר \"\").\\n5. **`invoice_date` (עמודת \"תאריך הפקת חשבונית\")**: תאריך הפקת החשבונית בפורמט `YYYY-MM-DD`.\\n6. **`line_items` (פירוט הפעולות המתומחרות במסגרת השירות)**:\\n   - חלץ מערך של **כל הפעולות / השירותים / הפריטים המתומחרים** בחשבונית (לדוגמה בתוך \"שירותי ניקיון\": `קניית סמרטוטים`, `הפעלת זגג`).\\n   - לכל פריט במערך החזר: `item_title` (בעברית), `total_ils` (הסכום של שורה זו בשקלים חדשים כולל מע\"מ), `vat_ils` (רכיב המע\"מ של שורה זו בשקלים חדשים).\\n   - אם החשבונית מציגה רק סכום לפני מע\"מ בשורות ומע\"מ בסוף, חשב לכל שורה את המע\"מ היחסי ואת הסכום כולל מע\"מ כך שסכום כל ה-`line_items` יתאים ל-`total_ils` ול-`vat_ils` הכוללים!\\n   - אם יש רק פריט/שורה אחת בחשבונית, החזר מערך עם איבר אחד.\\n7. **המרת מטבע בזמן אמת**:\\n   - אם הסכום הוא בדולרים (`USD` / `$`) או מטבע זר — חובה לקרוא תחילה לכלי `המרה דולר לשקל` כדי לקבל את השער העדכני בזמן אמת, ולהמיר את כל הסכומים (`total_ils`, `vat_ils`, וכל שורה ב-`line_items`) לשקלים חדשים (`ILS`), מעוגל ל-2 ספרות אחרי הנקודה.\\n8. **קטלוג ל-Google Drive**:\\n   - `topic`: נושא כללי בעברית (לדוגמה: \"שירותי ניקיון\", \"מוצרי חשמל\", \"ציוד משרדי\", \"תוכנה ומחשוב\", \"נסיעות ותחבורה\", \"כללי\").\\n   - `year`: שנת החשבונית ב-4 ספרות (לדוגמה: \"2026\").\\n   - `month`: מספר החודש הדו-ספרתי ושם החודש בעברית (לדוגמה: \"11 - נובמבר\").\\n   - `day`: היום הלועזי בחודש מתאריך החשבונית (לדוגמה: \"23\").\\n   - `drive_file_name`: שם הקובץ בדיוק בפורמט `\"<שם הפריט/שירות המרכזי בעברית> .<היום בחודש>.\"` — לדוגמה: `\"מכונת כביסה .23.\"`.\\n\\n### פורמט פלט סופי (JSON בלבד, ללא markdown):\\n{\\n  \"is_valid_invoice\": true,\\n  \"document_type\": \"חשבונית מס\",\\n  \"rejection_reason\": \"\",\\n  \"title_he\": \"שירותי ניקיון\",\\n  \"description_he\": \"תחזוקה וניקיון שוטף למשרד\",\\n  \"invoice_date\": \"2026-11-05\",\\n  \"client_or_vendor_name\": \"ניקיון הגליל בע\\\"מ\",\\n  \"company_id_hp\": \"514123456\",\\n  \"items_he\": \"קניית סמרטוטים, הפעלת זגג\",\\n  \"line_items\": [\\n    { \"item_title\": \"קניית סמרטוטים\", \"total_ils\": 118, \"vat_ils\": 18 },\\n    { \"item_title\": \"הפעלת זגג\", \"total_ils\": 354, \"vat_ils\": 54 }\\n  ],\\n  \"original_currency\": \"ILS\",\\n  \"original_total\": 472,\\n  \"exchange_rate_used\": 1,\\n  \"total_ils\": 472,\\n  \"vat_ils\": 72,\\n  \"topic\": \"שירותי ניקיון\",\\n  \"year\": \"2026\",\\n  \"month\": \"11 - נובמבר\",\\n  \"day\": \"05\",\\n  \"drive_file_name\": \"שירותי ניקיון .05.\"\\n}' }}",
+          "maxIterations": 10,
+          "passthroughBinaryImages": true,
+          "passthroughBinaryPdfs": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1680,
+        96
+      ],
+      "id": "9c96ae02-b7d8-4809-87af-f5c74634a953",
+      "name": "AI Agent",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "cachedResultName": "gpt-5.4",
+          "mode": "list",
+          "value": "gpt-5.4"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1520,
+        416
+      ],
+      "id": "00476886-6157-4f85-b049-2f5931aca481",
+      "name": "OpenAI Chat Model",
+      "disabled": true,
+      "credentials": {
+        "openAiApi": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/mcp-registry.airtable",
+      "typeVersion": 1.1,
+      "position": [
+        4820,
+        0
+      ],
+      "id": "eeada663-2529-47bc-8e3d-8f4e8f282d3a",
+      "name": "Airtable MCP",
+      "credentials": {
+        "airtableMcpOAuth2Api": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "Airtable account 2"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        6656,
+        464
+      ],
+      "id": "3a454c67-0505-44de-861c-922abb28beb5",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "sendTo": "<YOUR_EMAIL>",
+        "subject": "={{ '🚨 תקלה באוטומציית חילוץ חשבוניות — ' + ($json.execution?.lastNodeExecuted || 'שגיאה כללית') }}",
+        "message": "={{ '<div dir=\"rtl\" style=\"font-family:Arial,sans-serif;direction:rtl;text-align:right;background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:20px;max-width:640px;\"><h2 style=\"color:#991B1B;margin-top:0;\">🚨 התראת תקלה באוטומציית הנהלת חשבונות</h2><p>שלום טכנאי יקר, אירעה שגיאה במהלך ריצת האוטומציה ויש צורך בבדיקה:</p><table style=\"width:100%;border-collapse:collapse;background:#FFFFFF;border-radius:8px;overflow:hidden;\"><tr><td style=\"padding:8px 12px;font-weight:bold;border-bottom:1px solid #F3F4F6;\">שם הוורקפלוו:</td><td style=\"padding:8px 12px;border-bottom:1px solid #F3F4F6;\">' + ($json.workflow?.name || 'חילוץ חשבוניות') + '</td></tr><tr><td style=\"padding:8px 12px;font-weight:bold;border-bottom:1px solid #F3F4F6;\">הרכיב (Node) שכשל:</td><td style=\"padding:8px 12px;border-bottom:1px solid #F3F4F6;color:#B91C1C;font-weight:bold;\">' + ($json.execution?.lastNodeExecuted || 'לא זוהה') + '</td></tr><tr><td style=\"padding:8px 12px;font-weight:bold;border-bottom:1px solid #F3F4F6;\">סוג השגיאה:</td><td style=\"padding:8px 12px;border-bottom:1px solid #F3F4F6;\">' + ($json.execution?.error?.name || 'Error') + '</td></tr><tr><td style=\"padding:8px 12px;font-weight:bold;border-bottom:1px solid #F3F4F6;\">פירוט התקלה:</td><td style=\"padding:8px 12px;border-bottom:1px solid #F3F4F6;\">' + ($json.execution?.error?.message || 'שגיאה לא מפורטת') + '</td></tr><tr><td style=\"padding:8px 12px;font-weight:bold;border-bottom:1px solid #F3F4F6;\">מועד התקלה:</td><td style=\"padding:8px 12px;border-bottom:1px solid #F3F4F6;\">' + $now.setZone('Asia/Jerusalem').toFormat('dd/MM/yyyy HH:mm:ss') + '</td></tr><tr><td style=\"padding:8px 12px;font-weight:bold;\">קישור להרצה שנכשלה:</td><td style=\"padding:8px 12px;\"><a href=\"' + ($json.execution?.url || '#') + '\">' + ($json.execution?.url || 'פתח ב-n8n') + '</a></td></tr></table><p style=\"margin-bottom:0;color:#7F1D1D;font-size:13px;\">נא להיכנס לקישור, לבדוק את יומן ההרצה והחיבורים (Gmail / Telegram / Airtable / Google Drive / OpenAI) ולתקן בהקדם.</p></div>' }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        6896,
+        464
+      ],
+      "id": "6e8169a4-f8b7-4390-b064-28fa39a210d6",
+      "name": "Alert Technician (Gmail)",
+      "webhookId": "1ae61391-e621-4ff0-9f5b-9c0d32c1c5f0",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst out = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  const bin = item.binary || {};\n  const json = item.json || {};\n\n  const sender =\n    json.from?.text ||\n    json.from?.value?.[0]?.address ||\n    json.headers?.from ||\n    json.From ||\n    '';\n\n  for (const [key, fileObj] of Object.entries(bin)) {\n    if (!fileObj || !fileObj.data) continue;\n\n    const mime = (fileObj.mimeType || '').toLowerCase();\n    const ext = (fileObj.fileExtension || '').toLowerCase();\n    const name = fileObj.fileName || `${key}.${ext || 'bin'}`;\n\n    const isPdf = mime.includes('pdf') || ext === 'pdf' || name.toLowerCase().endsWith('.pdf');\n    const isImage = mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'tif', 'tiff'].includes(ext);\n\n    if (!isPdf && !isImage) continue;\n\n    // Skip tiny tracking pixels / social signature icons (< 4KB) safely using real binary buffer\n    if (isImage) {\n      try {\n        const buf = await this.helpers.getBinaryDataBuffer(i, key);\n        if (buf && buf.length < 4000) continue;\n      } catch {}\n    }\n\n    out.push({\n      json: {\n        source: 'gmail',\n        emailMessageId: json.id || '',\n        subject: json.subject || json.Subject || '',\n        sender,\n        receivedDate: json.date || new Date().toISOString(),\n        textContext: (json.text || json.snippet || '').slice(0, 1500),\n        fileName: name,\n        mimeType: fileObj.mimeType || (isPdf ? 'application/pdf' : 'image/jpeg'),\n        fileExtension: ext || (isPdf ? 'pdf' : 'jpg'),\n      },\n      binary: { data: fileObj },\n      pairedItem: { item: i },\n    });\n  }\n}\n\nreturn out;"
+      },
+      "id": "11111111-1111-4111-8111-111111111101",
+      "name": "Extract Email Attachments",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        704,
+        0
+      ],
+      "notes": "Why Code: Split Out considered — Gmail downloadAttachments stores files under dynamic binary keys (attachment_0, attachment_1...) that must be enumerated and normalized to binary.data."
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst offset = staticData.lastTelegramUpdateId ? Number(staticData.lastTelegramUpdateId) + 1 : 0;\nreturn [{ json: { offset } }];"
+      },
+      "id": "11111111-1111-4111-8111-111111111102",
+      "name": "Prepare Telegram Poll",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        176
+      ],
+      "notes": "Why Code: $getWorkflowStaticData('global') persists lastTelegramUpdateId across 2-hour scheduled runs to pass offset to Telegram getUpdates."
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot<YOUR_TELEGRAM_BOT_TOKEN>/getUpdates",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "offset",
+              "value": "={{ $json.offset }}"
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            },
+            {
+              "name": "timeout",
+              "value": "0"
+            },
+            {
+              "name": "allowed_updates",
+              "value": "[\"message\"]"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "11111111-1111-4111-8111-111111111103",
+      "name": "Get Telegram Updates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        704,
+        176
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "notes": "Why HTTP: Native Telegram node does not expose getUpdates polling; calls Bot API getUpdates every 2 hours using $vars.DOSI_BOT_TOKEN."
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst resp = $input.first()?.json || {};\nconst updates = Array.isArray(resp.result) ? resp.result : [];\n\nlet maxUpdateId = staticData.lastTelegramUpdateId || 0;\nconst out = [];\n\nfor (const upd of updates) {\n  if (typeof upd.update_id === 'number' && upd.update_id > maxUpdateId) {\n    maxUpdateId = upd.update_id;\n  }\n\n  const msg = upd.message || upd.channel_post;\n  if (!msg) continue;\n\n  const chatId = String(msg.chat?.id ?? '');\n  const sender =\n    [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(' ') ||\n    msg.from?.username ||\n    msg.chat?.title ||\n    'Telegram User';\n  const receivedDate = msg.date ? new Date(msg.date * 1000).toISOString() : new Date().toISOString();\n  const textContext = msg.caption || msg.text || '';\n\n  if (msg.document && msg.document.file_id) {\n    const doc = msg.document;\n    const mime = (doc.mime_type || '').toLowerCase();\n    const fname = doc.file_name || `telegram_${upd.update_id}.pdf`;\n    const isPdf = mime.includes('pdf') || fname.toLowerCase().endsWith('.pdf');\n    const isImg = mime.startsWith('image/') || /\\.(jpg|jpeg|png|webp|gif)$/i.test(fname);\n    if (!isPdf && !isImg) continue;\n\n    out.push({\n      json: {\n        source: 'telegram',\n        emailMessageId: '',\n        telegramUpdateId: upd.update_id,\n        telegramChatId: chatId,\n        subject: `טלגרם DOSI - ${sender}`,\n        sender,\n        receivedDate,\n        textContext,\n        fileId: doc.file_id,\n        fileName: fname,\n        mimeType: doc.mime_type || (isPdf ? 'application/pdf' : 'image/jpeg'),\n        fileExtension: fname.includes('.') ? fname.split('.').pop().toLowerCase() : (isPdf ? 'pdf' : 'jpg'),\n      },\n    });\n  } else if (Array.isArray(msg.photo) && msg.photo.length > 0) {\n    const largest = msg.photo[msg.photo.length - 1];\n    out.push({\n      json: {\n        source: 'telegram',\n        emailMessageId: '',\n        telegramUpdateId: upd.update_id,\n        telegramChatId: chatId,\n        subject: `טלגרם DOSI - ${sender}`,\n        sender,\n        receivedDate,\n        textContext,\n        fileId: largest.file_id,\n        fileName: `receipt_${upd.update_id}.jpg`,\n        mimeType: 'image/jpeg',\n        fileExtension: 'jpg',\n      },\n    });\n  }\n}\n\nif (maxUpdateId > (staticData.lastTelegramUpdateId || 0)) {\n  staticData.lastTelegramUpdateId = maxUpdateId;\n}\n\nreturn out;"
+      },
+      "id": "11111111-1111-4111-8111-111111111104",
+      "name": "Parse Telegram File Updates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        176
+      ],
+      "notes": "Why Code: Extracts document or largest photo[] entry from Telegram getUpdates response and saves max update_id in staticData."
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ .fileId }}",
+        "additionalFields": {}
+      },
+      "id": "11111111-1111-4111-8111-111111111105",
+      "name": "Download Telegram File",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1184,
+        272
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "webhookId": "b1e8bfff-e3f3-4464-b8e1-eeaced1be96c",
+      "credentials": {
+        "telegramApi": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {
+          "clashHandling": {
+            "values": {
+              "resolveClash": "preferInput1",
+              "overrideEmpty": true
+            }
+          }
+        }
+      },
+      "id": "11111111-1111-4111-8111-111111111106",
+      "name": "Merge Telegram Metadata & File",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1424,
+        176
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "11111111-1111-4111-8111-111111111107",
+      "name": "Merge Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        896,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ ($json.mimeType || '').toLowerCase() }}",
+              "operator": {
+                "operation": "contains",
+                "type": "string"
+              },
+              "rightValue": "pdf",
+              "id": "f44bd352-e896-4780-9a6e-36e24d0877d4"
+            },
+            {
+              "leftValue": "={{ ($json.fileName || '').toLowerCase() }}",
+              "operator": {
+                "operation": "endsWith",
+                "type": "string"
+              },
+              "rightValue": ".pdf",
+              "id": "5d25595d-7d78-45f7-8db5-c38738962835"
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "11111111-1111-4111-8111-111111111108",
+      "name": "Is PDF?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1136,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {
+          "joinPages": true,
+          "keepSource": "both"
+        }
+      },
+      "id": "11111111-1111-4111-8111-111111111109",
+      "name": "Extract PDF Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.2,
+      "position": [
+        1376,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "doc-kind-pdf",
+              "name": "docKind",
+              "type": "string",
+              "value": "pdf"
+            },
+            {
+              "id": "extracted-text-pdf",
+              "name": "extractedText",
+              "type": "string",
+              "value": "={{ $json.text || '' }}"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {
+          "stripBinary": false
+        }
+      },
+      "id": "11111111-1111-4111-8111-111111111110",
+      "name": "Prepare PDF Item",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1616,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "doc-kind-img",
+              "name": "docKind",
+              "type": "string",
+              "value": "image"
+            },
+            {
+              "id": "extracted-text-img",
+              "name": "extractedText",
+              "type": "string",
+              "value": "={{ '(קובץ תמונה מצורף — יש לקרוא ישירות מהתמונה המצורפת) ' + ($json.textContext || '') }}"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {
+          "stripBinary": false
+        }
+      },
+      "id": "11111111-1111-4111-8111-111111111111",
+      "name": "Prepare Image Item",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1504,
+        320
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "11111111-1111-4111-8111-111111111112",
+      "name": "Merge Extracted Docs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1856,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {
+          "clashHandling": {
+            "values": {
+              "resolveClash": "preferInput1",
+              "overrideEmpty": true
+            }
+          }
+        }
+      },
+      "id": "11111111-1111-4111-8111-111111111116",
+      "name": "Restore Binary After Agent",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2624,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.source }}",
+              "operator": {
+                "operation": "equals",
+                "type": "string"
+              },
+              "rightValue": "gmail",
+              "id": "5485c138-4000-48d1-b573-df24123f1828"
+            },
+            {
+              "leftValue": "={{ $json.emailMessageId }}",
+              "operator": {
+                "operation": "notEmpty",
+                "singleValue": true,
+                "type": "string"
+              },
+              "id": "2abe32a1-1440-4625-abc7-af9b5c9adb3f"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "11111111-1111-4111-8111-111111111117",
+      "name": "Is From Gmail?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        2864,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "compare": "selectedFields",
+        "fieldsToCompare": "emailMessageId",
+        "options": {}
+      },
+      "id": "11111111-1111-4111-8111-111111111118",
+      "name": "Dedupe Email IDs",
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        3072,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "markAsRead",
+        "messageId": "={{ $json.emailMessageId }}"
+      },
+      "id": "11111111-1111-4111-8111-111111111119",
+      "name": "Mark Email as Read",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        3264,
+        48
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "webhookId": "97f535c2-728e-44d3-95a5-dbecfac41832",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.output?.is_valid_invoice }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        }
+      },
+      "id": "22222222-2222-4222-8222-222222222201",
+      "name": "Is Valid Invoice or Receipt?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        2864,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "22222222-2222-4222-8222-222222222202",
+      "name": "Drive Loop",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        3024,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "name = 'חשבוניות וקבלות' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        "limit": 1,
+        "filter": {
+          "driveId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "My Drive"
+          },
+          "folderId": {
+            "__rl": true,
+            "cachedResultName": "/ (Root folder)",
+            "mode": "list",
+            "value": "root"
+          },
+          "whatToSearch": "folders",
+          "includeTrashed": false
+        },
+        "options": {}
+      },
+      "id": "22222222-2222-4222-8222-222222222203",
+      "name": "Search Root Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        3168,
+        320
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.id }}",
+              "operator": {
+                "operation": "notEmpty",
+                "singleValue": true,
+                "type": "string"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "22222222-2222-4222-8222-222222222204",
+      "name": "If Root Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        3328,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "name": "חשבוניות וקבלות",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "cachedResultName": "/ (Root folder)",
+          "mode": "list",
+          "value": "root"
+        },
+        "options": {
+          "simplifyOutput": true
+        }
+      },
+      "id": "22222222-2222-4222-8222-222222222205",
+      "name": "Create Root Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        3488,
+        368
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "22222222-2222-4222-8222-222222222206",
+      "name": "Root Folder Ready",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3680,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "={{ \"name = '\" + ($('Drive Loop').item.json.output.topic || 'כללי').replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\") + \"' and mimeType = 'application/vnd.google-apps.folder' and trashed = false\" }}",
+        "limit": 1,
+        "filter": {
+          "driveId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "My Drive"
+          },
+          "folderId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "={{ $('Root Folder Ready').item.json.id }}"
+          },
+          "whatToSearch": "folders",
+          "includeTrashed": false
+        },
+        "options": {}
+      },
+      "id": "22222222-2222-4222-8222-222222222207",
+      "name": "Search Topic Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        3856,
+        320
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.id }}",
+              "operator": {
+                "operation": "notEmpty",
+                "singleValue": true,
+                "type": "string"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "22222222-2222-4222-8222-222222222208",
+      "name": "If Topic Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        4016,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "name": "={{ $('Drive Loop').item.json.output.topic || 'כללי' }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Root Folder Ready').item.json.id }}"
+        },
+        "options": {
+          "simplifyOutput": true
+        }
+      },
+      "id": "22222222-2222-4222-8222-222222222209",
+      "name": "Create Topic Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        4192,
+        400
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "22222222-2222-4222-8222-222222222210",
+      "name": "Topic Folder Ready",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        4320,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "={{ \"name = '\" + ($('Drive Loop').item.json.output.year || $now.toFormat('yyyy')).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\") + \"' and mimeType = 'application/vnd.google-apps.folder' and trashed = false\" }}",
+        "limit": 1,
+        "filter": {
+          "driveId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "My Drive"
+          },
+          "folderId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "={{ $('Topic Folder Ready').item.json.id }}"
+          },
+          "whatToSearch": "folders",
+          "includeTrashed": false
+        },
+        "options": {}
+      },
+      "id": "22222222-2222-4222-8222-222222222211",
+      "name": "Search Year Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        4480,
+        320
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.id }}",
+              "operator": {
+                "operation": "notEmpty",
+                "singleValue": true,
+                "type": "string"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "22222222-2222-4222-8222-222222222212",
+      "name": "If Year Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        4640,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "name": "={{ $('Drive Loop').item.json.output.year || $now.toFormat('yyyy') }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Topic Folder Ready').item.json.id }}"
+        },
+        "options": {
+          "simplifyOutput": true
+        }
+      },
+      "id": "22222222-2222-4222-8222-222222222213",
+      "name": "Create Year Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        4800,
+        400
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "22222222-2222-4222-8222-222222222214",
+      "name": "Year Folder Ready",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        4960,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "={{ \"name = '\" + ($('Drive Loop').item.json.output.month || $now.toFormat('MM')).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\") + \"' and mimeType = 'application/vnd.google-apps.folder' and trashed = false\" }}",
+        "limit": 1,
+        "filter": {
+          "driveId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "My Drive"
+          },
+          "folderId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "={{ $('Year Folder Ready').item.json.id }}"
+          },
+          "whatToSearch": "folders",
+          "includeTrashed": false
+        },
+        "options": {}
+      },
+      "id": "22222222-2222-4222-8222-222222222215",
+      "name": "Search Month Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        5104,
+        336
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.id }}",
+              "operator": {
+                "operation": "notEmpty",
+                "singleValue": true,
+                "type": "string"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "22222222-2222-4222-8222-222222222216",
+      "name": "If Month Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        5248,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "name": "={{ $('Drive Loop').item.json.output.month || $now.toFormat('MM') }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Year Folder Ready').item.json.id }}"
+        },
+        "options": {
+          "simplifyOutput": true
+        }
+      },
+      "id": "22222222-2222-4222-8222-222222222217",
+      "name": "Create Month Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        5392,
+        400
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "22222222-2222-4222-8222-222222222218",
+      "name": "Month Folder Ready",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        5584,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {
+          "clashHandling": {
+            "values": {
+              "resolveClash": "preferInput1",
+              "overrideEmpty": true
+            }
+          }
+        }
+      },
+      "id": "22222222-2222-4222-8222-222222222219",
+      "name": "Restore Binary for Upload",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        5776,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "name": "={{ $('Drive Loop').item.json.output.drive_file_name }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.id }}"
+        },
+        "options": {
+          "simplifyOutput": true
+        }
+      },
+      "id": "22222222-2222-4222-8222-222222222220",
+      "name": "Upload Invoice to Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        5952,
+        368
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "22222222-2222-4222-8222-222222222221",
+      "name": "Limit 1 Valid",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        3408,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst validCount = items.filter((i) => i.json?.output?.is_valid_invoice === true).length;\nif (validCount === 0 && items.length > 0) {\n  return [{ json: { triggerDashboard: true } }];\n}\nreturn [];"
+      },
+      "id": "22222222-2222-4222-8222-222222222222",
+      "name": "Check Any Valid?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2864,
+        352
+      ],
+      "notes": "Why Code: Routes runs with 0 valid invoices directly to the HTML Dashboard without Merge deadlock."
+    },
+    {
+      "parameters": {
+        "authentication": "airtableOAuth2Api",
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "cachedResultName": "הנהלת חשבונות",
+          "mode": "id",
+          "value": "app3Tuqqv8a9M8VFH"
+        },
+        "table": {
+          "__rl": true,
+          "cachedResultName": "Table 1",
+          "mode": "id",
+          "value": "tbl0QzHMCxoidb2a7"
+        },
+        "options": {}
+      },
+      "id": "22222222-2222-4222-8222-222222222223",
+      "name": "Get Airtable Records",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        5100,
+        -120
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "airtableOAuth2Api": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const airtableItems = $input.all().filter((i) => i.json && i.json.id);\nconst runItems = $('Restore Binary After Agent').all();\n\nlet duplicatesDeletedMcp = 0;\ntry {\n  const dedupeItems = $('Deduplicate Airtable via MCP').all();\n  for (const d of dedupeItems) {\n    const raw = String(d.json?.output || '');\n    const m = raw.match(/\"duplicates_deleted\"\\s*:\\s*(\\d+)/);\n    if (m) duplicatesDeletedMcp += Number(m[1]) || 0;\n  }\n} catch {}\n\nlet newRowsWrittenCount = 0;\ntry {\n  const prep = $('Prepare Airtable Rows').all();\n  newRowsWrittenCount = prep.filter((r) => r.json?._hasRows === true).length;\n} catch {}\n\nconst totalScanned = runItems.length;\nconst validInvoices = runItems.filter((i) => i.json?.output?.is_valid_invoice === true);\nconst rejected = runItems.filter((i) => i.json?.output?.is_valid_invoice !== true);\n\nconst gmailCount = runItems.filter((i) => i.json?.source === 'gmail').length;\nconst telegramCount = runItems.filter((i) => i.json?.source === 'telegram').length;\nconst runTotalILS = validInvoices.reduce((sum, i) => sum + (Number(i.json?.output?.total_ils) || 0), 0);\n\n// Count Airtable totals without double-counting line items + \"סה\"כ\" summary rows\nconst summaryRows = airtableItems.filter((r) => {\n  const f = r.json?.fields || r.json || {};\n  return String(f['פריטים \\\\ מוצרים'] || '').startsWith('סה\"כ');\n});\nconst totalInvoicesInTable = summaryRows.length > 0 ? summaryRows.length : airtableItems.length;\nconst totalAirtableILS = (summaryRows.length > 0 ? summaryRows : airtableItems).reduce((sum, r) => {\n  const f = r.json?.fields || r.json || {};\n  const val = Number(f['סכום כולל'] ?? 0);\n  return sum + (Number.isFinite(val) ? val : 0);\n}, 0);\n\nconst esc = (s) =>\n  String(s ?? '')\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;');\n\nconst fmtNum = (n) => Number(n || 0).toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });\n\nconst rowsHtml = runItems\n  .map((i) => {\n    const o = i.json?.output || {};\n    const srcLabel = i.json?.source === 'telegram' ? 'טלגרם (DOSI)' : 'Gmail';\n    const lineCount = Array.isArray(o.line_items) ? o.line_items.length : 0;\n    const badge = o.is_valid_invoice\n      ? `<span style=\"background:#DCFCE7;color:#166534;padding:3px 8px;border-radius:12px;font-size:12px;font-weight:600;\">תקין (${lineCount} פעולות + סה\"כ)</span>`\n      : `<span style=\"background:#FEE2E2;color:#991B1B;padding:3px 8px;border-radius:12px;font-size:12px;font-weight:600;\">סונן (${esc(o.document_type || 'לא חשבונית')})</span>`;\n    const drivePath = o.is_valid_invoice\n      ? `${esc(o.topic)} / ${esc(o.year)} / ${esc(o.month)} / ${esc(o.drive_file_name)}`\n      : '—';\n\n    return `\n      <tr style=\"border-bottom:1px solid #E5E7EB;\">\n        <td style=\"padding:10px 8px;font-weight:600;color:#111827;\">${esc(o.title_he || i.json?.fileName || 'ללא כותרת')}</td>\n        <td style=\"padding:10px 8px;color:#374151;\">${esc(o.client_or_vendor_name || '—')}</td>\n        <td style=\"padding:10px 8px;color:#374151;\">${esc(o.description_he || '—')}</td>\n        <td style=\"padding:10px 8px;color:#374151;\">${esc(o.invoice_date || '—')}</td>\n        <td style=\"padding:10px 8px;color:#374151;\">${esc(srcLabel)}</td>\n        <td style=\"padding:10px 8px;color:#111827;font-weight:600;\">₪${fmtNum(o.total_ils)}</td>\n        <td style=\"padding:10px 8px;\">${badge}</td>\n        <td style=\"padding:10px 8px;color:#4B5563;font-size:12px;\">${drivePath}</td>\n      </tr>`;\n  })\n  .join('');\n\nconst runTime = DateTime.now().setZone('Asia/Jerusalem').toFormat('dd/MM/yyyy HH:mm');\n\nconst htmlDashboard = `\n<!DOCTYPE html>\n<html dir=\"rtl\" lang=\"he\">\n<head><meta charset=\"utf-8\"></head>\n<body style=\"margin:0;padding:24px;background-color:#F3F4F6;font-family:Arial,Helvetica,sans-serif;direction:rtl;text-align:right;color:#1F2937;\">\n  <div style=\"max-width:920px;margin:0 auto;background:#FFFFFF;border-radius:14px;overflow:hidden;box-shadow:0 4px 18px rgba(0,0,0,0.07);border:1px solid #E5E7EB;\">\n    <div style=\"background:linear-gradient(135deg,#0F172A 0%,#1E3A8A 100%);padding:26px 28px;color:#FFFFFF;\">\n      <h1 style=\"margin:0;font-size:22px;font-weight:700;\">📊 דשבורד חילוץ וניהול חשבוניות</h1>\n      <p style=\"margin:6px 0 0;font-size:13px;color:#CBD5E1;\">סיכום סריקה אוטומטית (Gmail + טלגרם DOSI) | מועד ריצה: ${esc(runTime)}</p>\n    </div>\n\n    <div style=\"padding:24px 28px;\">\n      <div style=\"display:flex;flex-wrap:wrap;gap:12px;margin-bottom:22px;\">\n        <div style=\"flex:1;min-width:150px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:14px;\">\n          <div style=\"font-size:12px;color:#1E40AF;font-weight:600;\">מסמכים שנסרקו</div>\n          <div style=\"font-size:26px;font-weight:700;color:#1E3A8A;margin-top:4px;\">${totalScanned}</div>\n          <div style=\"font-size:11px;color:#3B82F6;margin-top:2px;\">Gmail: ${gmailCount} | טלגרם: ${telegramCount}</div>\n        </div>\n        <div style=\"flex:1;min-width:150px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:14px;\">\n          <div style=\"font-size:12px;color:#166534;font-weight:600;\">חשבוניות תקינות</div>\n          <div style=\"font-size:26px;font-weight:700;color:#14532D;margin-top:4px;\">${validInvoices.length}</div>\n          <div style=\"font-size:11px;color:#15803D;margin-top:2px;\">שורות חדשות שנכתבו: ${newRowsWrittenCount} | ₪${fmtNum(runTotalILS)}</div>\n        </div>\n        <div style=\"flex:1;min-width:150px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:14px;\">\n          <div style=\"font-size:12px;color:#92400E;font-weight:600;\">כפיליות שנמחקו ב-MCP</div>\n          <div style=\"font-size:26px;font-weight:700;color:#78350F;margin-top:4px;\">${duplicatesDeletedMcp}</div>\n          <div style=\"font-size:11px;color:#B45309;margin-top:2px;\">נבדק אוטומטית ב-Airtable MCP</div>\n        </div>\n        <div style=\"flex:1;min-width:150px;background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:14px;\">\n          <div style=\"font-size:12px;color:#991B1B;font-weight:600;\">מסמכים שסוננו</div>\n          <div style=\"font-size:26px;font-weight:700;color:#7F1D1D;margin-top:4px;\">${rejected.length}</div>\n          <div style=\"font-size:11px;color:#B91C1C;margin-top:2px;\">זיכוי / הצעת מחיר / אחר</div>\n        </div>\n      </div>\n\n      <div style=\"background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:14px 18px;margin-bottom:22px;\">\n        <div style=\"font-size:14px;font-weight:700;color:#0F172A;margin-bottom:4px;\">🗄️ מצב מצטבר בטבלת \"הנהלת חשבונות\" (Airtable)</div>\n        <div style=\"font-size:13px;color:#475569;\">\n          סה\"כ חשבוניות בטבלה: <strong>${totalInvoicesInTable}</strong> (סה\"כ ${airtableItems.length} שורות כולל פירוט פעולות) &nbsp;|&nbsp;\n          סה\"כ סכום מצטבר: <strong>₪${fmtNum(totalAirtableILS)}</strong>\n        </div>\n      </div>\n\n      <h2 style=\"font-size:16px;margin:0 0 10px;color:#111827;\">פירוט מסמכים מהרצה זו</h2>\n      <div style=\"overflow-x:auto;\">\n        <table style=\"width:100%;border-collapse:collapse;font-size:13px;text-align:right;\">\n          <thead>\n            <tr style=\"background:#F1F5F9;color:#334155;border-bottom:2px solid #CBD5E1;\">\n              <th style=\"padding:10px 8px;\">כותרת (נושא השירות)</th>\n              <th style=\"padding:10px 8px;\">חברה</th>\n              <th style=\"padding:10px 8px;\">תיאור הצורך</th>\n              <th style=\"padding:10px 8px;\">תאריך</th>\n              <th style=\"padding:10px 8px;\">מקור</th>\n              <th style=\"padding:10px 8px;\">סכום (₪)</th>\n              <th style=\"padding:10px 8px;\">סטטוס</th>\n              <th style=\"padding:10px 8px;\">מיקום ב-Google Drive</th>\n            </tr>\n          </thead>\n          <tbody>\n            ${rowsHtml || '<tr><td colspan=\"8\" style=\"padding:14px;text-align:center;color:#6B7280;\">לא נמצאו פריטים</td></tr>'}\n          </tbody>\n        </table>\n      </div>\n    </div>\n  </div>\n</body>\n</html>`;\n\nreturn [{\n  json: {\n    subject: `📊 דשבורד חשבוניות: ${validInvoices.length} תקינות | ${totalScanned} נסרקו (${runTime})`,\n    htmlDashboard,\n    totalScanned,\n    validCount: validInvoices.length,\n    rejectedCount: rejected.length,\n    totalInvoicesInTable,\n  },\n}];"
+      },
+      "id": "22222222-2222-4222-8222-222222222224",
+      "name": "Build HTML Dashboard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5340,
+        -120
+      ],
+      "notes": "Why Code: Aggregates current run items from Restore Binary After Agent and live Airtable table totals into a styled Hebrew RTL HTML Dashboard."
+    },
+    {
+      "parameters": {
+        "sendTo": "<YOUR_EMAIL>",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.htmlDashboard }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "22222222-2222-4222-8222-222222222225",
+      "name": "Send Dashboard Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        5580,
+        -120
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "webhookId": "f5ad1570-41d7-4348-bcd3-efeddef8ef98",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Fetches the live real-time USD to ILS exchange rate from open.er-api.com. Call this tool whenever an invoice or receipt is in USD ($) or foreign currency before writing amounts into Airtable, so all amounts are stored in ILS (שקלים חדשים).",
+        "url": "https://open.er-api.com/v6/latest/USD",
+        "options": {},
+        "optimizeResponse": true,
+        "dataField": "rates",
+        "fieldsToInclude": "selected",
+        "fields": "ILS"
+      },
+      "id": "11111111-1111-4111-8111-111111111115",
+      "name": "המרה דולר לשקל",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.5,
+      "position": [
+        1824,
+        400
+      ],
+      "notes": "Why HTTP Tool: Fetches real-time USD to ILS exchange rate for converting foreign-currency invoices into ILS."
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nreturn items.map((item, idx) => {\n  const raw = item.json?.output ?? item.json?.text ?? '';\n  let parsed = null;\n\n  if (raw && typeof raw === 'object') {\n    parsed = raw;\n  } else if (typeof raw === 'string') {\n    const cleaned = raw.replace(/```json\\s*/gi, '').replace(/```\\s*/g, '').trim();\n    try {\n      parsed = JSON.parse(cleaned);\n    } catch {\n      const start = cleaned.indexOf('{');\n      const end = cleaned.lastIndexOf('}');\n      if (start !== -1 && end > start) {\n        try {\n          parsed = JSON.parse(cleaned.slice(start, end + 1));\n        } catch {\n          parsed = null;\n        }\n      }\n    }\n  }\n\n  if (!parsed || typeof parsed !== 'object') {\n    parsed = {\n      is_valid_invoice: false,\n      document_type: 'שגיאת פענוח',\n      rejection_reason: 'לא ניתן היה לחלץ מבנה תקין מתשובת הסוכן',\n      title_he: 'שגיאה בפענוח מסמך',\n      description_he: 'שגיאה בפענוח המסמך',\n      invoice_date: '',\n      client_or_vendor_name: '',\n      company_id_hp: '',\n      items_he: '',\n      line_items: [],\n      original_currency: 'ILS',\n      original_total: 0,\n      exchange_rate_used: 1,\n      total_ils: 0,\n      vat_ils: 0,\n      topic: 'כללי',\n      year: DateTime.now().toFormat('yyyy'),\n      month: DateTime.now().toFormat('MM'),\n      day: DateTime.now().toFormat('dd'),\n      drive_file_name: 'לא רלוונטי',\n    };\n  }\n\n  // Enforce max 5 words in description_he\n  if (typeof parsed.description_he === 'string') {\n    const words = parsed.description_he.trim().split(/\\s+/).filter(Boolean);\n    if (words.length > 5) {\n      parsed.description_he = words.slice(0, 5).join(' ');\n    }\n  }\n\n  // Ensure line_items array exists\n  if (!Array.isArray(parsed.line_items) || parsed.line_items.length === 0) {\n    if (parsed.is_valid_invoice) {\n      parsed.line_items = [{\n        item_title: parsed.items_he || parsed.title_he || 'שירות',\n        total_ils: Number(parsed.total_ils) || 0,\n        vat_ils: Number(parsed.vat_ils) || 0,\n      }];\n    } else {\n      parsed.line_items = [];\n    }\n  }\n\n  return {\n    json: { output: parsed },\n    pairedItem: { item: idx },\n  };\n});"
+      },
+      "id": "11111111-1111-4111-8111-111111111120",
+      "name": "Parse Agent Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1712,
+        -144
+      ],
+      "notes": "Why Code: Safely parses JSON from AI Agent text output (stripping markdown fences if any) so formatting quirks never halt the workflow."
+    },
+    {
+      "id": "33333333-3333-4333-8333-333333333301",
+      "name": "Get Existing Airtable Rows",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        3560,
+        -220
+      ],
+      "parameters": {
+        "authentication": "airtableOAuth2Api",
+        "base": {
+          "__rl": true,
+          "cachedResultName": "הנהלת חשבונות",
+          "mode": "id",
+          "value": "app3Tuqqv8a9M8VFH"
+        },
+        "operation": "search",
+        "options": {},
+        "resource": "record",
+        "returnAll": true,
+        "table": {
+          "__rl": true,
+          "cachedResultName": "Table 1",
+          "mode": "id",
+          "value": "tbl0QzHMCxoidb2a7"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "credentials": {
+        "airtableOAuth2Api": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "id": "33333333-3333-4333-8333-333333333302",
+      "name": "Prepare Airtable Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3800,
+        -220
+      ],
+      "parameters": {
+        "jsCode": "const existingItems = $input.all().filter((i) => i.json && i.json.id);\nconst validItems = $('Is Valid Invoice or Receipt?').all();\n\nconst norm = (s) => String(s ?? '').trim().toLowerCase().replace(/\\s+/g, ' ');\nconst makeKey = (title, company, date, total) =>\n  `${norm(title)}|${norm(company)}|${norm(date)}|${Math.round((Number(total) || 0) * 100)}`;\nconst makeCompanyKey = (company, date, total) =>\n  `${norm(company)}|${norm(date)}|${Math.round((Number(total) || 0) * 100)}`;\n\nconst existingKeys = new Set();\nconst existingCompanyKeys = new Set();\n\nfor (const rec of existingItems) {\n  const f = rec.json?.fields || rec.json || {};\n  const t = f['כותרת'] || '';\n  const c = f['שם לקוח'] || '';\n  const d = f['תאריך הפקת חשבונית'] || '';\n  const tot = f['סכום כולל'] ?? 0;\n  const itemCol = String(f['פריטים \\\\ מוצרים'] || '');\n\n  if (itemCol.startsWith('סה\"כ') || t) {\n    existingKeys.add(makeKey(t, c, d, tot));\n    if (c && d) existingCompanyKeys.add(makeCompanyKey(c, d, tot));\n  }\n}\n\nconst rowsOut = [];\n\nfor (const item of validItems) {\n  const o = item.json?.output || {};\n  if (!o.is_valid_invoice) continue;\n\n  const title = (o.title_he || 'שירות כללי').trim();\n  const company = (o.client_or_vendor_name || '').trim();\n  const date = (o.invoice_date || '').trim();\n  const total = Number(o.total_ils) || 0;\n  const vat = Number(o.vat_ils) || 0;\n  const hp = (o.company_id_hp || '').trim();\n  const desc = (o.description_he || '').trim();\n\n  const k1 = makeKey(title, company, date, total);\n  const k2 = makeCompanyKey(company, date, total);\n\n  if (existingKeys.has(k1) || (company && date && existingCompanyKeys.has(k2))) {\n    continue;\n  }\n\n  existingKeys.add(k1);\n  if (company && date) existingCompanyKeys.add(k2);\n\n  const lineItems = Array.isArray(o.line_items) && o.line_items.length > 0\n    ? o.line_items\n    : [{ item_title: o.items_he || title, total_ils: total, vat_ils: vat }];\n\n  for (const li of lineItems) {\n    const subTitle = (li.item_title || title).trim();\n    rowsOut.push({\n      json: {\n        _hasRows: true,\n        _rowKind: 'item',\n        'כותרת': `${title} — ${subTitle}`,\n        'תיאור': desc,\n        'תאריך הפקת חשבונית': date,\n        'שם לקוח': company,\n        'ח.פ לקוח': hp,\n        'פריטים \\\\ מוצרים': subTitle,\n        'סכום כולל': Math.round((Number(li.total_ils) || 0) * 100) / 100,\n        'מע\"מ': Math.round((Number(li.vat_ils) || 0) * 100) / 100,\n      },\n    });\n  }\n\n  rowsOut.push({\n    json: {\n      _hasRows: true,\n      _rowKind: 'total',\n      'כותרת': title,\n      'תיאור': desc,\n      'תאריך הפקת חשבונית': date,\n      'שם לקוח': company,\n      'ח.פ לקוח': hp,\n      'פריטים \\\\ מוצרים': `סה\"כ — ${title} (${lineItems.length} פעולות)`,\n      'סכום כולל': Math.round(total * 100) / 100,\n      'מע\"מ': Math.round(vat * 100) / 100,\n    },\n  });\n}\n\nif (rowsOut.length === 0) {\n  return [{ json: { _hasRows: false } }];\n}\n\nreturn rowsOut;",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "notes": "Why Code: Checks existing Airtable records to avoid duplicate writes, then expands each new invoice into its priced line-item rows followed by a final 'סה\"כ' summary row."
+    },
+    {
+      "id": "33333333-3333-4333-8333-333333333303",
+      "name": "Has Airtable Rows?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        4040,
+        -220
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json._hasRows }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        }
+      }
+    },
+    {
+      "id": "33333333-3333-4333-8333-333333333304",
+      "name": "Write Rows to Airtable",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.2,
+      "position": [
+        4280,
+        -300
+      ],
+      "parameters": {
+        "authentication": "airtableOAuth2Api",
+        "base": {
+          "__rl": true,
+          "cachedResultName": "הנהלת חשבונות",
+          "mode": "id",
+          "value": "app3Tuqqv8a9M8VFH"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "schema": [
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "כותרת",
+              "id": "כותרת",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "תיאור",
+              "id": "תיאור",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "תאריך הפקת חשבונית",
+              "id": "תאריך הפקת חשבונית",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "שם לקוח",
+              "id": "שם לקוח",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "ח.פ לקוח",
+              "id": "ח.פ לקוח",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "פריטים \\ מוצרים",
+              "id": "פריטים \\ מוצרים",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "סכום כולל",
+              "id": "סכום כולל",
+              "required": false,
+              "type": "number"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "מע\"מ",
+              "id": "מע\"מ",
+              "required": false,
+              "type": "number"
+            }
+          ],
+          "value": null
+        },
+        "operation": "create",
+        "options": {
+          "ignoreFields": "_hasRows,_rowKind",
+          "typecast": true
+        },
+        "resource": "record",
+        "table": {
+          "__rl": true,
+          "cachedResultName": "Table 1",
+          "mode": "id",
+          "value": "tbl0QzHMCxoidb2a7"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "airtableOAuth2Api": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "id": "33333333-3333-4333-8333-333333333305",
+      "name": "Limit 1 Dedupe",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        4520,
+        -300
+      ],
+      "parameters": {
+        "keep": "firstItems",
+        "maxItems": 1
+      }
+    },
+    {
+      "id": "33333333-3333-4333-8333-333333333306",
+      "name": "OpenAI Dedupe Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        4660,
+        0
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "cachedResultName": "gpt-5.4-mini",
+          "mode": "list",
+          "value": "gpt-5.4-mini"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "<CONFIGURE_IN_N8N>",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "id": "33333333-3333-4333-8333-333333333307",
+      "name": "Deduplicate Airtable via MCP",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        4760,
+        -220
+      ],
+      "parameters": {
+        "hasOutputParser": false,
+        "options": {
+          "maxIterations": 8,
+          "systemMessage": "אתה מבצע סריקת מניעת כפיליות חד-פעמית בטבלת הנהלת חשבונות באמצעות כלי Airtable MCP.\nפרטי הטבלה:\n- Base ID: app3Tuqqv8a9M8VFH\n- Table ID: tbl0QzHMCxoidb2a7\n\nמשימה:\n1. קרא ל-list_records_for_table על Base ID ו-Table ID שלמעלה.\n2. בדוק אם קיימות רשומות כפולות (רשומות שיש להן בדיוק אותו \"כותרת\", \"שם לקוח\", \"תאריך הפקת חשבונית\", \"פריטים \\ מוצרים\" ו-\"סכום כולל\").\n3. אם נמצאו רשומות כפולות — השאר תמיד את הרשומה המקורית והראשונה שהוזנה (לפי createdTime המוקדם ביותר) ומחק רק את הכפולות בעזרת delete_records_for_table.\n4. בסיום החזר JSON קצר בלבד בפורמט: {\"duplicates_deleted\": <מספר>, \"checked\": true}"
+        },
+        "promptType": "define",
+        "text": "={{ 'מועד בדיקה: ' + $now.setZone('Asia/Jerusalem').toFormat('yyyy-MM-dd HH:mm') + ' — סרוק כפילויות בטבלת הנהלת חשבונות (app3Tuqqv8a9M8VFH / tbl0QzHMCxoidb2a7) ומחק כפילויות בלבד תוך השארת הרשומה הראשונה המקורית.' }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "executeOnce": true
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Unread Emails",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Telegram Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Alert Technician (Gmail)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Unread Emails": {
+      "main": [
+        [
+          {
+            "node": "Extract Email Attachments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Telegram Poll": {
+      "main": [
+        [
+          {
+            "node": "Get Telegram Updates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Telegram Updates": {
+      "main": [
+        [
+          {
+            "node": "Parse Telegram File Updates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Telegram File Updates": {
+      "main": [
+        [
+          {
+            "node": "Merge Telegram Metadata & File",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Download Telegram File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Telegram File": {
+      "main": [
+        [
+          {
+            "node": "Merge Telegram Metadata & File",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Extract Email Attachments": {
+      "main": [
+        [
+          {
+            "node": "Merge Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Telegram Metadata & File": {
+      "main": [
+        [
+          {
+            "node": "Merge Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Sources": {
+      "main": [
+        [
+          {
+            "node": "Is PDF?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is PDF?": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Image Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF Text": {
+      "main": [
+        [
+          {
+            "node": "Prepare PDF Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare PDF Item": {
+      "main": [
+        [
+          {
+            "node": "Merge Extracted Docs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Image Item": {
+      "main": [
+        [
+          {
+            "node": "Merge Extracted Docs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Extracted Docs": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Restore Binary After Agent",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Restore Binary After Agent": {
+      "main": [
+        [
+          {
+            "node": "Is From Gmail?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Is Valid Invoice or Receipt?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check Any Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is From Gmail?": {
+      "main": [
+        [
+          {
+            "node": "Dedupe Email IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedupe Email IDs": {
+      "main": [
+        [
+          {
+            "node": "Mark Email as Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Valid Invoice or Receipt?": {
+      "main": [
+        [
+          {
+            "node": "Drive Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive Loop": {
+      "main": [
+        [
+          {
+            "node": "Limit 1 Valid",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Search Root Folder",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Restore Binary for Upload",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Search Root Folder": {
+      "main": [
+        [
+          {
+            "node": "If Root Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Root Exists": {
+      "main": [
+        [
+          {
+            "node": "Root Folder Ready",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Root Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Root Folder": {
+      "main": [
+        [
+          {
+            "node": "Root Folder Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Root Folder Ready": {
+      "main": [
+        [
+          {
+            "node": "Search Topic Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Topic Folder": {
+      "main": [
+        [
+          {
+            "node": "If Topic Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Topic Exists": {
+      "main": [
+        [
+          {
+            "node": "Topic Folder Ready",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Topic Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Topic Folder": {
+      "main": [
+        [
+          {
+            "node": "Topic Folder Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Topic Folder Ready": {
+      "main": [
+        [
+          {
+            "node": "Search Year Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Year Folder": {
+      "main": [
+        [
+          {
+            "node": "If Year Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Year Exists": {
+      "main": [
+        [
+          {
+            "node": "Year Folder Ready",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Year Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Year Folder": {
+      "main": [
+        [
+          {
+            "node": "Year Folder Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Year Folder Ready": {
+      "main": [
+        [
+          {
+            "node": "Search Month Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Month Folder": {
+      "main": [
+        [
+          {
+            "node": "If Month Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Month Exists": {
+      "main": [
+        [
+          {
+            "node": "Month Folder Ready",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Month Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Month Folder": {
+      "main": [
+        [
+          {
+            "node": "Month Folder Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Month Folder Ready": {
+      "main": [
+        [
+          {
+            "node": "Restore Binary for Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Binary for Upload": {
+      "main": [
+        [
+          {
+            "node": "Upload Invoice to Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Invoice to Drive": {
+      "main": [
+        [
+          {
+            "node": "Drive Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Any Valid?": {
+      "main": [
+        [
+          {
+            "node": "Get Airtable Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Airtable Records": {
+      "main": [
+        [
+          {
+            "node": "Build HTML Dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build HTML Dashboard": {
+      "main": [
+        [
+          {
+            "node": "Send Dashboard Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "המרה דולר לשקל": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Agent Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Agent Output": {
+      "main": [
+        [
+          {
+            "node": "Restore Binary After Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit 1 Valid": {
+      "main": [
+        [
+          {
+            "node": "Get Existing Airtable Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Existing Airtable Rows": {
+      "main": [
+        [
+          {
+            "node": "Prepare Airtable Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Airtable Rows": {
+      "main": [
+        [
+          {
+            "node": "Has Airtable Rows?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Airtable Rows?": {
+      "main": [
+        [
+          {
+            "node": "Write Rows to Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Deduplicate Airtable via MCP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Rows to Airtable": {
+      "main": [
+        [
+          {
+            "node": "Limit 1 Dedupe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit 1 Dedupe": {
+      "main": [
+        [
+          {
+            "node": "Deduplicate Airtable via MCP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Dedupe Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Deduplicate Airtable via MCP",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable MCP": {
+      "ai_tool": [
+        [
+          {
+            "node": "Deduplicate Airtable via MCP",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deduplicate Airtable via MCP": {
+      "main": [
+        [
+          {
+            "node": "Get Airtable Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true,
+    "timezone": "Asia/Jerusalem",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "versionId": "cd3ea4db-6b7b-4d80-9d9e-9827e1d10712",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  },
+  "tags": [],
+  "pinData": {}
+}
